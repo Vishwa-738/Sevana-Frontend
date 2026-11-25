@@ -167,21 +167,6 @@ export function VolunteerManagement() {
         }),
       });
 
-      // Keep AssistanceRequest assignment in sync with Coordinator & Volunteer Dashboards
-      if (dispatchForm.targetType === 'AssistanceRequest') {
-        try {
-          await apiClient(`/api/v1/coordinator/requests/${dispatchForm.targetId}/status`, {
-            method: 'PUT',
-            body: JSON.stringify({
-              status: 'Assigned',
-              volunteerId: selectedVolunteer.id,
-            }),
-          });
-        } catch {
-          // Non-blocking: backend /dispatch may already handle this
-        }
-      }
-
       addToast({ type: 'success', message: `${selectedVolunteer.name} dispatched successfully.` });
       setDispatchModal(false);
       setDispatchForm({ targetId: '', targetType: 'AssistanceRequest' });

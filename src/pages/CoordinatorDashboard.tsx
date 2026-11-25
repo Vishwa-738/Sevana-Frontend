@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Users, Package, Home, MapPin, Clock, Phone, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Users, Package, Home, MapPin, Clock, Phone, ExternalLink, Sparkles } from 'lucide-react';
 import { Layout, PageHeader } from '../components/Layout';
 import { Card, KpiCard, Badge, StatusBadge, Button, Modal } from '../components/ui';
 import { apiClient } from '../api';
@@ -37,6 +37,7 @@ function getUrgencyVariant(urgency: string): 'danger' | 'warning' | 'info' | 'ne
   if (u === 'low') return 'neutral';
   return 'info';
 }
+
 export function CoordinatorDashboard() {
   const { addToast } = useAppContext();
   const [stats, setStats] = useState({ crises: 0, pending: 0, volunteers: 0, capacity: 0 });
@@ -85,8 +86,9 @@ export function CoordinatorDashboard() {
 
   const fetchVolunteers = async () => {
     try {
-      const res = await apiClient('/api/v1/volunteers', { method: 'GET' });
-      setVolunteers(Array.isArray(res) ? res : (res?.data || res?.items || []));
+      const res = await apiClient('/api/v1/volunteers?activeOnly=true', { method: 'GET' });
+      const activeList = Array.isArray(res) ? res : (res?.data || res?.items || []);
+      setVolunteers(activeList);
     } catch (err) {
       console.error('Failed to load volunteers', err);
       addToast({ type: 'error', message: 'Failed to load volunteer list.' });
@@ -202,6 +204,7 @@ export function CoordinatorDashboard() {
                   <tr className="border-b border-[#CBD8E6] bg-[#F8FAFC]">
                     <th className="text-left px-4 py-3 text-xs font-semibold text-[#5A7290] uppercase">Citizen Details</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-[#5A7290] uppercase">Category & Urgency</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#5A7290] uppercase">AI Analysis</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-[#5A7290] uppercase">Location & Affected</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-[#5A7290] uppercase">Status</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-[#5A7290] uppercase">Actions</th>
@@ -232,6 +235,12 @@ export function CoordinatorDashboard() {
                     const urgency = r.urgency || r.Urgency || r.priority || 'Medium';
                     const timestampMs = getTimestampMs(r);
 
+                    // AI Analysis metadata from backend
+                    const aiSummary = r.aiSummary || r.AiSummary || '';
+                    const aiRecommendation = r.aiRecommendation || r.AiRecommendation || '';
+                    const rawConfidence = r.aiConfidenceScore ?? r.AiConfidenceScore ?? null;
+                    const aiConfidenceScore = rawConfidence !== null ? Number(rawConfidence) : null;
+
                     return (
                       <tr key={reqId || idx} className={`border-b border-[#E8EDF3] hover:bg-[#F8FAFC] ${isUpdating ? 'opacity-50' : ''}`}>
                         <td className="px-4 py-4 align-top">
@@ -260,6 +269,35 @@ export function CoordinatorDashboard() {
                             <p className="text-xs text-[#5A7290] mt-2 line-clamp-2 max-w-[200px]" title={description}>
                               {description}
                             </p>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-4 align-top min-w-[240px] max-w-xs">
+                          {aiSummary || aiRecommendation ? (
+                            <div className="p-2.5 bg-[#F5F3FF] border border-[#DDD6FE] rounded-lg text-xs space-y-1.5">
+                              <div className="flex items-center justify-between gap-2 text-[#6D28D9] font-semibold">
+                                <span className="inline-flex items-center gap-1">
+                                  <Sparkles size={12} /> AI Summary
+                                </span>
+                                {aiConfidenceScore !== null && aiConfidenceScore > 0 && (
+                                  <span className="text-[10px] bg-[#6D28D9]/10 text-[#6D28D9] px-1.5 py-0.5 rounded-full">
+                                    {Math.round(aiConfidenceScore)}% conf.
+                                  </span>
+                                )}
+                              </div>
+                              {aiSummary && (
+                                <p className="text-[#0D1B2E] leading-snug" title={aiSummary}>
+                                  {aiSummary}
+                                </p>
+                              )}
+                              {aiRecommendation && (
+                                <p className="text-[#5A7290] leading-snug pt-1 border-t border-[#DDD6FE]/60" title={aiRecommendation}>
+                                  <strong className="text-[#6D28D9]">Action:</strong> {aiRecommendation}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[#94A3B8] italic">No AI analysis</span>
                           )}
                         </td>
 

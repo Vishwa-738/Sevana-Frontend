@@ -122,17 +122,30 @@ function AnimatedAuthCard({ initialMode }: { initialMode: 'login' | 'register' }
   const toggleMode = (toRegister: boolean) => {
     setIsRegister(toRegister);
     setLoginError('');
+    setNeedsOtpVerification(false);
     setRegError('');
     // Keep URL in sync without unmounting the component so the expand/collapse animation runs smoothly
     window.history.replaceState(null, '', toRegister ? '/register' : '/login');
   };
 
-  // ==================== LOGIN STATE & LOGIC (UNCHANGED) ====================
+  // ==================== LOGIN STATE & LOGIC ====================
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [needsOtpVerification, setNeedsOtpVerification] = useState(false);
   const [showLoginPwd, setShowLoginPwd] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: '', password: '', remember: false });
+
+  const handleOpenOtpFromLogin = () => {
+    setRegForm((f) => ({ ...f, email: loginForm.email.trim() }));
+    setOtp(['', '', '', '', '', '']);
+    setTimeLeft(600);
+    setRegError('');
+    setLoginError('');
+    setNeedsOtpVerification(false);
+    setStep('otp');
+    setIsRegister(true);
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,6 +155,7 @@ function AnimatedAuthCard({ initialMode }: { initialMode: 'login' | 'register' }
     }
 
     setLoginError('');
+    setNeedsOtpVerification(false);
     setLoginLoading(true);
 
     try {
@@ -186,13 +200,17 @@ function AnimatedAuthCard({ initialMode }: { initialMode: 'login' | 'register' }
         }
       }, 750);
     } catch (err: any) {
-      setLoginError(err.message || 'Login failed. Please check your credentials.');
+      const msg = err.message || 'Login failed. Please check your credentials.';
+      setLoginError(msg);
+      if (msg.toLowerCase().includes('otp') || msg.toLowerCase().includes('verify your account')) {
+        setNeedsOtpVerification(true);
+      }
     } finally {
       setLoginLoading(false);
     }
   };
 
-  // ==================== REGISTER & OTP STATE & LOGIC (UNCHANGED) ====================
+  // ==================== REGISTER & OTP STATE & LOGIC ====================
   const [regLoading, setRegLoading] = useState(false);
   const [step, setStep] = useState<'form' | 'otp' | 'success'>('form');
   const [regError, setRegError] = useState('');
@@ -388,8 +406,26 @@ function AnimatedAuthCard({ initialMode }: { initialMode: 'login' | 'register' }
             </h1>
 
             {loginError && (
-              <div className="mb-4">
-                <Alert type="error" message={loginError} onClose={() => setLoginError('')} />
+              <div className="mb-4 space-y-2">
+                <Alert
+                  type="error"
+                  message={loginError}
+                  onClose={() => {
+                    setLoginError('');
+                    setNeedsOtpVerification(false);
+                  }}
+                />
+                {needsOtpVerification && (
+                  <button
+                    type="button"
+                    onClick={handleOpenOtpFromLogin}
+                    className="w-full h-10 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] border border-[#BFDBFE] text-xs font-semibold text-[#1D4ED8] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Mail size={14} />
+                    <span>Verify Account with OTP</span>
+                    <ArrowRight size={14} />
+                  </button>
+                )}
               </div>
             )}
 
@@ -676,7 +712,7 @@ function AnimatedAuthCard({ initialMode }: { initialMode: 'login' | 'register' }
                               onClick={() => setShowRegConfirm((v) => !v)}
                               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/70 hover:text-white cursor-pointer"
                             >
-                              {showRegConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                              {showRegConfirm ? <EyeOff size={15} /> : <Lock size={15} />}
                             </button>
                           </div>
                         </div>

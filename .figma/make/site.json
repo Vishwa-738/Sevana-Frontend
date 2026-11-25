@@ -1,0 +1,10 @@
+{
+  "description": "An AI-powered platform for coordinating humanitarian aid during crises, connecting citizens, emergency responders, and organizations to streamline assistance.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

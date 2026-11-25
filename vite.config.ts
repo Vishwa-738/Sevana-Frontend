@@ -30,16 +30,18 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
-    server: {
-      host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
-      port: parseInt(process.env.PORT || '8443'),
-      strictPort: false, // මෙතන true තිබුණ එක false කළා
-      watch: {
-        ignored: [
-          '**/.figma/**',
-        ],
+      server: {
+          host: '0.0.0.0',
+          port: parseInt(process.env.PORT || '8443'),
+          strictPort: false,
+          watch: {
+              ignored: (filePath) =>
+                  filePath.includes('\\.vs\\') ||
+                  filePath.includes('/.vs/') ||
+                  filePath.endsWith('.vs') ||
+                  filePath.endsWith('.vsidx'),
+          },
       },
-    },
     preview: {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
