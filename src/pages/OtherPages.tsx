@@ -5,10 +5,6 @@ import {
   AlertTriangle, Package, Home, TrendingUp, Star, User, Lock, Globe,
   Eye, MoreHorizontal, ChevronRight, RefreshCw
 } from 'lucide-react';
-import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line
-} from 'recharts';
 import { Layout, PageHeader } from '../components/Layout';
 import { Card, KpiCard, Badge, Button, Tabs, SearchInput, Modal, Input, Select, Textarea, Alert, Progress, Table, Avatar, StatusBadge, PriorityBadge, EmptyState, Dropdown } from '../components/ui';
 import { useAppContext } from '../context';
@@ -369,88 +365,6 @@ export function MapView() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </Layout>
-  );
-}
-
-// ── Reports & Analytics ───────────────────────────────────────────────────
-
-const analyticsData = [
-  { date: 'Jun 10', requests: 45, resolved: 40, avgTime: 28 },
-  { date: 'Jun 11', requests: 67, resolved: 58, avgTime: 32 },
-  { date: 'Jun 12', requests: 89, resolved: 71, avgTime: 29 },
-  { date: 'Jun 13', requests: 124, resolved: 98, avgTime: 24 },
-  { date: 'Jun 14', requests: 198, resolved: 145, avgTime: 22 },
-  { date: 'Jun 15', requests: 284, resolved: 201, avgTime: 19 },
-];
-
-export function Reports() {
-  const [dateFilter, setDateFilter] = useState('7d');
-
-  return (
-    <Layout>
-      <div className="p-6">
-        <PageHeader
-          title="Reports & Analytics"
-          subtitle="Operational insights and performance metrics"
-          actions={
-            <div className="flex gap-2">
-              <div className="flex bg-[#F0F4F8] rounded-xl p-1 gap-1">
-                {['24h', '7d', '30d', '90d'].map(d => (
-                  <button key={d} onClick={() => setDateFilter(d)} className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors ${dateFilter === d ? 'bg-white text-[#0D1B2E] shadow-sm' : 'text-[#5A7290]'}`}>{d}</button>
-                ))}
-              </div>
-              <Button variant="outline" size="sm" icon={<Download size={14} />}>Export</Button>
-            </div>
-          }
-        />
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <KpiCard label="Total Requests" value="807" icon={<Package size={20} />} color="#1A3A6B" change="47%" changePositive={false} />
-          <KpiCard label="Resolved" value="613" icon={<CheckCircle size={20} />} color="#16A34A" change="76%" changePositive={true} />
-          <KpiCard label="Avg Response Time" value="24 min" icon={<Clock size={20} />} color="#EA580C" change="18%" changePositive={true} />
-          <KpiCard label="AI Override Rate" value="14%" icon={<Star size={20} />} color="#6D28D9" />
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-4 mb-6">
-          <Card padding="p-5">
-            <h3 className="font-semibold text-[#0D1B2E] mb-4 font-[Outfit]">Request Volume & Resolution</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={analyticsData}>
-                <defs>
-                  <linearGradient id="req" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1A3A6B" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#1A3A6B" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="res" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16A34A" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E8EDF3" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#5A7290' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#5A7290' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #CBD8E6', fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="requests" stroke="#1A3A6B" fill="url(#req)" strokeWidth={2} name="Requests" />
-                <Area type="monotone" dataKey="resolved" stroke="#16A34A" fill="url(#res)" strokeWidth={2} name="Resolved" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </Card>
-          <Card padding="p-5">
-            <h3 className="font-semibold text-[#0D1B2E] mb-4 font-[Outfit]">Average Response Time (min)</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={analyticsData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E8EDF3" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#5A7290' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#5A7290' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #CBD8E6', fontSize: 12 }} />
-                <Line type="monotone" dataKey="avgTime" stroke="#EA580C" strokeWidth={2.5} dot={{ fill: '#EA580C', r: 4 }} name="Avg Time (min)" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
         </div>
       </div>
     </Layout>

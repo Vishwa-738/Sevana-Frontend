@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Home, MapPin, Bell, Plus, ChevronRight, CheckCircle,
   Clock, Package, Truck, Star, Upload, ShieldCheck, Phone, HeartHandshake,
@@ -7,11 +7,40 @@ import {
 } from 'lucide-react';
 import { Button, Card, Badge, StatusBadge, Modal, Input, Textarea, Select, Alert, Progress } from '../components/ui';
 import { useAppContext } from '../context';
-import { apiClient, getAssignedVolunteerForRequest, getNotifications } from '../api';
+import { ApiError, apiClient, getAssignedVolunteerForRequest, getNotifications } from '../api';
+import { isArchivedStatus } from '../utils/requestLifecycle';
 
 type CitizenLang = 'en' | 'si' | 'ta';
+type RequestView = 'active' | 'history';
 
 const LANG_STORAGE_KEY = 'sevana_citizen_lang';
+const VERIFIED_REQUESTS_STORAGE_KEY = 'sevana_verified_citizen_requests';
+
+function getVerifiedRequestIds(): Set<string> {
+  try {
+    const stored = localStorage.getItem(VERIFIED_REQUESTS_STORAGE_KEY);
+    if (!stored) return new Set();
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.flatMap((entry: unknown) => {
+        if (typeof entry === 'string') return [entry];
+        if (
+          typeof entry === 'object' &&
+          entry !== null &&
+          'requestId' in entry &&
+          typeof entry.requestId === 'string'
+        ) {
+          return [entry.requestId];
+        }
+        return [];
+      })
+    );
+  } catch (error: unknown) {
+    console.warn('Failed to load citizen feedback confirmations.', error);
+    return new Set();
+  }
+}
 
 const LANG_OPTIONS: { code: CitizenLang; label: string }[] = [
   { code: 'en', label: 'EN' },
@@ -41,14 +70,27 @@ const translations = {
     applyToVolunteer: 'Apply to Volunteer',
     applyToVolunteerSub: 'Join the field response team',
     myRequests: 'My Requests',
-    seeAll: 'See all',
+    activeRequestsTab: 'Active',
+    requestHistoryTab: 'History',
+    noActiveRequests: 'You have no active requests. Your past requests are available in History.',
+    viewHistory: 'View History',
+    noHistoryRequests: 'No closed, delivered, or completed requests yet.',
     loadingRequests: 'Loading requests...',
     noRequestsYet: "You haven't submitted any requests yet.",
     assignedShelterLabel: 'Assigned Shelter:',
     requestedShelterLabel: 'Requested Shelter:',
     awaitingManagerVerification: '(Awaiting Manager Verification)',
     aidTeamDispatched: 'Aid team dispatched — ETA 30 min',
-    leaveFeedback: 'Leave feedback',
+    postResolutionCheckIn: 'Post-Resolution Check-in',
+    confirmRateAid: 'Confirm & Rate Aid',
+    requestRecoveryFollowUp: 'Request Recovery Follow-Up',
+    verifiedByCitizen: 'Verified by Citizen',
+    recoveryFollowUpDescription: (id: string) => `Post-disaster recovery follow-up for request ${id}.`,
+    feedbackThankYou: 'Thank you for confirming and rating the aid provided.',
+    feedbackAlreadySubmitted: 'Feedback was already submitted for this request. It is marked verified.',
+    feedbackStatusNotEligible: 'Feedback can be submitted only for delivered or closed requests.',
+    feedbackSubmitFailed: 'Failed to submit feedback. Please try again.',
+    feedbackSaveFailed: 'Your confirmation could not be saved on this device.',
     viewResponderDetails: 'View Responder Details',
     nearbyShelters: 'Nearby Shelters',
     viewAll: 'View all',
@@ -195,14 +237,27 @@ const translations = {
     applyToVolunteer: 'ස්වේච්ඡා සේවයට අයදුම් කරන්න',
     applyToVolunteerSub: 'ක්ෂේත්‍ර සහන කණ්ඩායමට එක්වන්න',
     myRequests: 'මගේ ඉල්ලීම්',
-    seeAll: 'සියල්ල බලන්න',
+    activeRequestsTab: 'සක්‍රීය',
+    requestHistoryTab: 'ඉතිහාසය',
+    noActiveRequests: 'ඔබට සක්‍රීය ඉල්ලීම් නොමැත. ඔබේ පෙර ඉල්ලීම් ඉතිහාසයේ ඇත.',
+    viewHistory: 'ඉතිහාසය බලන්න',
+    noHistoryRequests: 'වසා දැමූ, ලබා දුන් හෝ සම්පූර්ණ කළ ඉල්ලීම් තවම නැත.',
     loadingRequests: 'ඉල්ලීම් පූරණය වෙමින් පවතී...',
     noRequestsYet: 'ඔබ තවමත් කිසිදු ඉල්ලීමක් ඉදිරිපත් කර නැත.',
     assignedShelterLabel: 'වෙන් කළ නවාතැන:',
     requestedShelterLabel: 'ඉල්ලූ නවාතැන:',
     awaitingManagerVerification: '(කළමනාකරුගේ අනුමැතිය අපේක්ෂාවෙන්)',
     aidTeamDispatched: 'සහන කණ්ඩායම පිටත් වී ඇත — ඇස්තමේන්තු කාලය විනාඩි 30',
-    leaveFeedback: 'ප්‍රතිචාරයක් ලබා දෙන්න',
+    postResolutionCheckIn: 'සහන සේවාවෙන් පසු තහවුරු කිරීම',
+    confirmRateAid: 'තහවුරු කර අගයන්න',
+    requestRecoveryFollowUp: 'ප්‍රතිසාධන සහාය ඉල්ලන්න',
+    verifiedByCitizen: 'පුරවැසියා විසින් තහවුරු කරන ලදී',
+    recoveryFollowUpDescription: (id: string) => `ඉල්ලීම ${id} සඳහා ආපදා ප්‍රතිසාධන සහාය අවශ්‍යයි.`,
+    feedbackThankYou: 'තහවුරු කර ප්‍රතිචාරය ලබාදුන් ඔබට ස්තුතියි.',
+    feedbackAlreadySubmitted: 'මෙම ඉල්ලීම සඳහා ප්‍රතිචාරය දැනටමත් ලබා දී ඇත. එය තහවුරු කළ ලෙස සලකුණු කර ඇත.',
+    feedbackStatusNotEligible: 'ප්‍රතිචාර ලබා දිය හැක්කේ සම්පූර්ණ කළ හෝ වසා දැමූ ඉල්ලීම් සඳහා පමණි.',
+    feedbackSubmitFailed: 'ප්‍රතිචාරය යැවීමට නොහැකි විය. නැවත උත්සාහ කරන්න.',
+    feedbackSaveFailed: 'ඔබේ තහවුරු කිරීම මෙම උපාංගයේ සුරැකීමට නොහැකි විය.',
     viewResponderDetails: 'සහන සේවක විස්තර බලන්න',
     nearbyShelters: 'ආසන්න ආරක්ෂිත නවාතැන්',
     viewAll: 'සියල්ල බලන්න',
@@ -349,14 +404,27 @@ const translations = {
     applyToVolunteer: 'தன்னார்வலராக விண்ணப்பிக்கவும்',
     applyToVolunteerSub: 'கள நிவாரணக் குழுவில் இணையுங்கள்',
     myRequests: 'எனது கோரிக்கைகள்',
-    seeAll: 'அனைத்தும்',
+    activeRequestsTab: 'செயலில்',
+    requestHistoryTab: 'வரலாறு',
+    noActiveRequests: 'செயலில் உள்ள கோரிக்கைகள் இல்லை. உங்கள் முந்தைய கோரிக்கைகள் வரலாற்றில் உள்ளன.',
+    viewHistory: 'வரலாற்றைப் பார்க்கவும்',
+    noHistoryRequests: 'மூடப்பட்ட, வழங்கப்பட்ட அல்லது முடிக்கப்பட்ட கோரிக்கைகள் இன்னும் இல்லை.',
     loadingRequests: 'கோரிக்கைகள் ஏற்றப்படுகின்றன...',
     noRequestsYet: 'நீங்கள் இதுவரை எந்த கோரிக்கையும் சமர்ப்பிக்கவில்லை.',
     assignedShelterLabel: 'ஒதுக்கப்பட்ட தங்குமிடம்:',
     requestedShelterLabel: 'கோரப்பட்ட தங்குமிடம்:',
     awaitingManagerVerification: '(மேலாளர் உறுதிப்படுத்தலுக்காக காத்திருக்கிறது)',
     aidTeamDispatched: 'நிவாரணக் குழு புறப்பட்டுள்ளது — சுமார் 30 நிமிடங்கள்',
-    leaveFeedback: 'கருத்து தெரிவிக்கவும்',
+    postResolutionCheckIn: 'உதவி வழங்கிய பின் உறுதிப்படுத்தல்',
+    confirmRateAid: 'உறுதிப்படுத்தி மதிப்பிடவும்',
+    requestRecoveryFollowUp: 'மீட்பு உதவியைக் கோரவும்',
+    verifiedByCitizen: 'குடிமகனால் உறுதிப்படுத்தப்பட்டது',
+    recoveryFollowUpDescription: (id: string) => `கோரிக்கை ${id}க்கான பேரிடர் மீட்பு உதவி.`,
+    feedbackThankYou: 'உறுதிப்படுத்தி மதிப்பிட்டதற்கு நன்றி.',
+    feedbackAlreadySubmitted: 'இந்தக் கோரிக்கைக்கான கருத்து ஏற்கனவே சமர்ப்பிக்கப்பட்டது. இது உறுதிப்படுத்தப்பட்டதாகக் குறிக்கப்பட்டுள்ளது.',
+    feedbackStatusNotEligible: 'வழங்கப்பட்ட அல்லது மூடப்பட்ட கோரிக்கைகளுக்கு மட்டுமே கருத்து சமர்ப்பிக்க முடியும்.',
+    feedbackSubmitFailed: 'கருத்தைச் சமர்ப்பிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
+    feedbackSaveFailed: 'உங்கள் உறுதிப்படுத்தலை இந்தச் சாதனத்தில் சேமிக்க முடியவில்லை.',
     viewResponderDetails: 'உதவியாளர் விவரங்களைப் பார்க்கவும்',
     nearbyShelters: 'அருகிலுள்ள தங்குமிடங்கள்',
     viewAll: 'அனைத்தும்',
@@ -507,6 +575,17 @@ function getRequestStageIndex(status: string): number {
   return 0;
 }
 
+function canSubmitRequestFeedback(status: unknown): boolean {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  return normalized === 'delivered' || normalized === 'closed';
+}
+
+function isDuplicateFeedbackError(error: unknown): boolean {
+  if (error instanceof ApiError && error.status === 409) return true;
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /duplicate|already.{0,30}(submitted|provided|exists|given|recorded)|feedback.{0,30}already/i.test(message);
+}
+
 function getInitialLang(): CitizenLang {
   try {
     const saved = localStorage.getItem(LANG_STORAGE_KEY);
@@ -558,13 +637,32 @@ export function CitizenPortal() {
 
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showShelterModal, setShowShelterModal] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const openRequest = searchParams.get('openRequest');
+    const openShelters = searchParams.get('openShelters');
+
+    if (openRequest === 'true') {
+      setShowRequestModal(true);
+      setSearchParams({}, { replace: true });
+    } else if (openShelters === 'true') {
+      setShowShelterModal(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [requestStep, setRequestStep] = useState<'form' | 'ai' | 'confirm' | 'success'>('form');
   const [trackedRequest, setTrackedRequest] = useState<any | null>(null);
   const [feedbackModal, setFeedbackModal] = useState(false);
+  const [feedbackRequestId, setFeedbackRequestId] = useState<string | null>(null);
+  const [feedbackComments, setFeedbackComments] = useState('');
   const [rating, setRating] = useState(0);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [verifiedRequestIds, setVerifiedRequestIds] = useState<Set<string>>(getVerifiedRequestIds);
 
   // Live Backend States
   const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [requestView, setRequestView] = useState<RequestView>('active');
   const [nearbyShelters, setNearbyShelters] = useState<any[]>([]);
   const [assignedShelter, setAssignedShelter] = useState<any>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -594,13 +692,138 @@ export function CitizenPortal() {
     longitude: null as number | null,
     affected: '1',
   });
-
-  // OpenStreetMap (Nominatim) Autocomplete & GPS States
   const [locationSearch, setLocationSearch] = useState('');
   const [locationResults, setLocationResults] = useState<any[]>([]);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [isLocatingGps, setIsLocatingGps] = useState(false);
+
+  const openFeedbackModal = (requestId: string) => {
+    const request = myRequests.find(item => String(item.id) === requestId);
+    if (!request || !canSubmitRequestFeedback(request.status)) {
+      addToast({ type: 'error', message: t.feedbackStatusNotEligible });
+      return;
+    }
+    setFeedbackRequestId(requestId);
+    setRating(0);
+    setFeedbackComments('');
+    setFeedbackModal(true);
+  };
+
+  const closeFeedbackModal = () => {
+    setFeedbackModal(false);
+    setFeedbackRequestId(null);
+    setRating(0);
+    setFeedbackComments('');
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackRequestId || !Number.isInteger(rating) || rating < 1 || rating > 5) return;
+    const request = myRequests.find(item => String(item.id) === feedbackRequestId);
+    if (!request || !canSubmitRequestFeedback(request.status)) {
+      addToast({ type: 'error', message: t.feedbackStatusNotEligible });
+      return;
+    }
+    const confirmedRequestId = feedbackRequestId;
+    const trimmedComment = feedbackComments.trim();
+    const markAsVerified = (duplicate: boolean) => {
+      setVerifiedRequestIds(previous => new Set([...previous, confirmedRequestId]));
+      try {
+        const stored = localStorage.getItem(VERIFIED_REQUESTS_STORAGE_KEY);
+        let existingRecords: Record<string, unknown>[] = [];
+        if (stored) {
+          try {
+            const parsed: unknown = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              existingRecords = parsed.filter(
+                (entry): entry is Record<string, unknown> =>
+                  typeof entry === 'object' &&
+                  entry !== null &&
+                  !Array.isArray(entry) &&
+                  typeof entry.requestId === 'string'
+              );
+            }
+          } catch (error: unknown) {
+            console.warn('Stored citizen feedback was invalid and will be replaced.', error);
+          }
+        }
+
+        const nextRecords = existingRecords.filter(record => record.requestId !== confirmedRequestId);
+        nextRecords.push({
+          requestId: confirmedRequestId,
+          rating,
+          comment: trimmedComment || undefined,
+          confirmedAtUtc: new Date().toISOString()
+        });
+        localStorage.setItem(VERIFIED_REQUESTS_STORAGE_KEY, JSON.stringify(nextRecords));
+      } catch (error: unknown) {
+        console.error('Failed to save citizen aid confirmation locally.', error);
+        addToast({ type: 'error', message: t.feedbackSaveFailed });
+      }
+
+      closeFeedbackModal();
+      addToast({
+        type: duplicate ? 'info' : 'success',
+        message: duplicate ? t.feedbackAlreadySubmitted : t.feedbackThankYou
+      });
+    };
+
+    setIsSubmittingFeedback(true);
+    try {
+      await apiClient(`/api/v1/requests/${encodeURIComponent(confirmedRequestId)}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rating,
+          ...(trimmedComment ? { comment: trimmedComment } : {})
+        })
+      });
+      markAsVerified(false);
+    } catch (error: unknown) {
+      if (isDuplicateFeedbackError(error)) {
+        markAsVerified(true);
+      } else {
+        console.error('Failed to submit citizen request feedback.', error);
+        addToast({
+          type: 'error',
+          message: error instanceof Error && error.message ? error.message : t.feedbackSubmitFailed
+        });
+      }
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  const openRecoveryFollowUp = (request: any) => {
+    const requestId = String(request.id || '');
+    const location = String(request.location || '');
+    const rawCategory = String(request.category || 'other').toLowerCase();
+    const category = ['food', 'medicine', 'shelter', 'transport', 'accessibility', 'other']
+      .find(value => rawCategory.includes(value)) || 'other';
+    const rawUrgency = String(request.urgency || request.priority || 'medium').toLowerCase();
+    const urgency = ['critical', 'high', 'medium', 'low'].find(value => rawUrgency.includes(value)) || 'medium';
+    const affectedCount = Number(
+      request.affectedPeopleCount ?? request.affectedCount ?? request.affected ?? 1
+    );
+    const latitude = request.latitude === null || request.latitude === undefined ? null : Number(request.latitude);
+    const longitude = request.longitude === null || request.longitude === undefined ? null : Number(request.longitude);
+
+    setForm({
+      category,
+      urgency,
+      description: `${t.recoveryFollowUpDescription(requestId)} ${String(request.description || '')}`.trim(),
+      location,
+      latitude: latitude !== null && Number.isFinite(latitude) ? latitude : null,
+      longitude: longitude !== null && Number.isFinite(longitude) ? longitude : null,
+      affected: Number.isFinite(affectedCount) && affectedCount > 0 ? String(affectedCount) : '1',
+    });
+    setLocationSearch(location);
+    setLocationResults([]);
+    setShowLocationDropdown(false);
+    setRequestStep('form');
+    setAiResult(null);
+    setAiUnavailable(false);
+    setShowRequestModal(true);
+  };
 
   // Debounced search for OpenStreetMap (Sri Lanka, localized to selected language)
   useEffect(() => {
@@ -725,7 +948,11 @@ export function CitizenPortal() {
         updated: new Date(r.createdAtUtc || r.CreatedAtUtc || Date.now()).toLocaleDateString(),
         description: r.description || r.Description,
         priority: r.priority || r.Priority || r.urgency || 'medium',
+        urgency: r.urgency || r.Urgency || r.priority || r.Priority || 'medium',
         location: r.location || r.Location,
+        latitude: r.latitude ?? r.Latitude ?? null,
+        longitude: r.longitude ?? r.Longitude ?? null,
+        affectedPeopleCount: r.affectedPeopleCount ?? r.AffectedPeopleCount ?? r.affectedCount ?? r.affected ?? 1,
         assignedShelterName: r.assignedShelterName || r.AssignedShelterName || null,
         assignedShelterLocation: r.assignedShelterLocation || r.AssignedShelterLocation || '',
         assignedShelterContact: r.assignedShelterContact || r.AssignedShelterContact || '',
@@ -958,6 +1185,10 @@ export function CitizenPortal() {
     return t.categories[key] || rawCat;
   };
 
+  const activeRequests = myRequests.filter(request => !isArchivedStatus(request.status));
+  const historyRequests = myRequests.filter(request => isArchivedStatus(request.status));
+  const visibleRequests = requestView === 'active' ? activeRequests : historyRequests;
+
   const fontClass =
     lang === 'si'
       ? "font-['Noto_Sans_Sinhala',sans-serif]"
@@ -1123,7 +1354,26 @@ export function CitizenPortal() {
         <div className="animate-fade-in delay-200">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-[#0D1B2E] font-[Outfit]">{t.myRequests}</h2>
-            <button className="text-xs text-[#1A3A6B] hover:underline">{t.seeAll}</button>
+            <div className="inline-flex rounded-lg bg-[#E8EDF3] p-1" aria-label="Request lifecycle">
+              <button
+                type="button"
+                onClick={() => setRequestView('active')}
+                aria-pressed={requestView === 'active'}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${requestView === 'active' ? 'bg-white text-[#1A3A6B] shadow-sm' : 'text-[#5A7290] hover:text-[#0D1B2E]'}`}
+              >
+                {t.activeRequestsTab}
+                <span className="rounded-full bg-[#DBEAFE] px-1.5 py-0.5 text-[10px] text-[#1D4ED8]">{activeRequests.length}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRequestView('history')}
+                aria-pressed={requestView === 'history'}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${requestView === 'history' ? 'bg-white text-[#1A3A6B] shadow-sm' : 'text-[#5A7290] hover:text-[#0D1B2E]'}`}
+              >
+                {t.requestHistoryTab}
+                <span className="rounded-full bg-[#CBD5E1] px-1.5 py-0.5 text-[10px] text-[#475569]">{historyRequests.length}</span>
+              </button>
+            </div>
           </div>
           <div className="space-y-3">
             {isLoadingData ? (
@@ -1132,8 +1382,22 @@ export function CitizenPortal() {
               <div className="text-center py-6 text-[#5A7290] text-sm bg-white rounded-2xl border border-[#CBD8E6]">
                 {t.noRequestsYet}
               </div>
+            ) : requestView === 'active' && activeRequests.length === 0 && historyRequests.length > 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-[#CBD8E6] bg-white px-4 py-6 text-center">
+                <p className="text-sm text-[#5A7290]">{t.noActiveRequests}</p>
+                <Button size="sm" onClick={() => setRequestView('history')}>
+                  {t.viewHistory}
+                </Button>
+              </div>
+            ) : visibleRequests.length === 0 ? (
+              <div className="text-center py-6 text-[#5A7290] text-sm bg-white rounded-2xl border border-[#CBD8E6]">
+                {t.noHistoryRequests}
+              </div>
             ) : (
-              myRequests.map(req => (
+              visibleRequests.map(req => {
+                const isResolvedRequest = isArchivedStatus(req.status);
+                const isCitizenVerified = verifiedRequestIds.has(String(req.id));
+                return (
                 <Card key={req.id} padding="p-4" hover className="cursor-pointer" onClick={() => setTrackedRequest(req)}>
                   <div className="flex items-start justify-between mb-2 gap-2">
                     <div>
@@ -1197,16 +1461,40 @@ export function CitizenPortal() {
                       <span>{t.aidTeamDispatched}</span>
                     </div>
                   )}
-                  {req.status === 'delivered' && (
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        setFeedbackModal(true);
-                      }}
-                      className="mt-3 text-xs text-[#1A3A6B] hover:underline flex items-center gap-1"
-                    >
-                      <Star size={12} /> {t.leaveFeedback}
-                    </button>
+                  {isResolvedRequest && (
+                    <div className="mt-3 rounded-xl border border-[#CBD8E6] bg-[#F8FAFC] p-3">
+                      <p className="mb-2 text-xs font-semibold text-[#0D1B2E]">{t.postResolutionCheckIn}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isCitizenVerified ? (
+                          <Badge variant="success" className="py-1">
+                            <CheckCircle size={12} /> {t.verifiedByCitizen}
+                          </Badge>
+                        ) : canSubmitRequestFeedback(req.status) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={event => {
+                              event.stopPropagation();
+                              openFeedbackModal(String(req.id));
+                            }}
+                          >
+                            <Star size={12} /> {t.confirmRateAid}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-[#71839A]">{t.feedbackStatusNotEligible}</span>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={event => {
+                            event.stopPropagation();
+                            openRecoveryFollowUp(req);
+                          }}
+                        >
+                          <HeartHandshake size={12} /> {t.requestRecoveryFollowUp}
+                        </Button>
+                      </div>
+                    </div>
                   )}
 
                   {req.status === 'assigned' && (
@@ -1221,7 +1509,8 @@ export function CitizenPortal() {
                     </button>
                   )}
                 </Card>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -1756,28 +2045,56 @@ export function CitizenPortal() {
       {/* Feedback Modal */}
       <Modal
         open={feedbackModal}
-        onClose={() => setFeedbackModal(false)}
+        onClose={closeFeedbackModal}
         title={t.rateExperience}
         size="sm"
         footer={
           <>
-            <Button variant="outline" onClick={() => setFeedbackModal(false)}>
+            <Button variant="outline" onClick={closeFeedbackModal}>
               {t.skip}
             </Button>
-            <Button onClick={() => setFeedbackModal(false)}>{t.submitFeedback}</Button>
+            <Button
+              onClick={() => void submitFeedback()}
+              disabled={
+                !feedbackRequestId ||
+                !myRequests.some(request =>
+                  String(request.id) === feedbackRequestId && canSubmitRequestFeedback(request.status)
+                ) ||
+                rating < 1 ||
+                rating > 5 ||
+                isSubmittingFeedback
+              }
+              loading={isSubmittingFeedback}
+            >
+              {t.submitFeedback}
+            </Button>
           </>
         }
       >
         <div className={`space-y-4 ${fontClass}`}>
+          {feedbackRequestId && (
+            <p className="text-xs text-[#5A7290]">{feedbackRequestId}</p>
+          )}
           <p className="text-sm text-[#5A7290]">{t.ratePrompt}</p>
           <div className="flex justify-center gap-3">
             {[1, 2, 3, 4, 5].map(s => (
-              <button key={s} onClick={() => setRating(s)} className="cursor-pointer">
+              <button
+                key={s}
+                type="button"
+                disabled={isSubmittingFeedback}
+                onClick={() => setRating(s)}
+                className="cursor-pointer disabled:cursor-not-allowed"
+              >
                 <Star size={32} className={s <= rating ? 'text-[#CA8A04] fill-[#CA8A04]' : 'text-[#CBD8E6]'} />
               </button>
             ))}
           </div>
-          <Textarea placeholder={t.additionalComments} rows={3} />
+          <Textarea
+            placeholder={t.additionalComments}
+            rows={3}
+            value={feedbackComments}
+            onChange={event => setFeedbackComments(event.target.value)}
+          />
         </div>
       </Modal>
 

@@ -22,7 +22,8 @@ import { CrisisManagement } from './pages/CrisisManagement';
 import { CampaignManagement } from './pages/CampaignManagement'; // Added Import
 import { NotificationCenter } from './pages/Notifications';
 import { Layout } from './components/Layout';
-import { Profile, Reports, AuditLogs } from './pages/OtherPages';
+import { Profile, AuditLogs } from './pages/OtherPages';
+import Reports from './pages/Reports';
 function ToastContainer() {
   const { toasts, removeToast } = useAppContext(); 
   return (

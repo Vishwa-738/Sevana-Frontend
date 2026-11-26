@@ -21,8 +21,7 @@ const ALL_STAFF = ['Coordinator', 'Admin', 'LogisticsManager', 'ShelterAdmin', '
 const ALL_USERS = ['Citizen', 'citizen', 'Volunteer', 'volunteer', ...ALL_STAFF];
 
 const navItems: NavItem[] = [
-  { label: 'Citizen Portal', path: '/citizen', icon: <Home size={18} />, allowedRoles: ['citizen', 'Citizen', 'Admin', 'admin'] },
-  { label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={18} />, allowedRoles: ['Coordinator', 'Admin'] },
+{ label: 'Citizen Portal', path: '/citizen', icon: <Home size={18} />, allowedRoles: ['citizen', 'Citizen'] },  { label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={18} />, allowedRoles: ['Coordinator', 'Admin'] },
   { label: 'Crisis Management', path: '/crisis', icon: <AlertTriangle size={18} />, allowedRoles: ['Coordinator', 'Admin', 'admin'] },
   { label: 'Campaigns', path: '/campaigns', icon: <Target size={18} />, allowedRoles: ['Coordinator', 'Admin'] },
   { label: 'Resources', path: '/resources', icon: <Package size={18} />, allowedRoles: ['Coordinator', 'Admin', 'LogisticsManager'] },

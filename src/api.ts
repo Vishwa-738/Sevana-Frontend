@@ -1,6 +1,13 @@
 // src/api.ts
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://yarn-skied-frequent.ngrok-free.dev';
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export const apiClient = async (endpoint: string, options: RequestInit = {}) => {
   const url = `${BASE_URL}${endpoint}`;
   
@@ -35,7 +42,7 @@ export const apiClient = async (endpoint: string, options: RequestInit = {}) => 
         if (textError) errorMessage = textError;
       } catch (e2) {}
     }
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status);
   }
 if (response.status === 204) return null;
   const text = await response.text();
@@ -100,4 +107,71 @@ export const sendMessage = async (messageData: { receiverId: string; content: st
 };
 export const getMyRequests = async () => {
   return apiClient('/api/v1/citizen/requests'); // Adjust endpoint path if your backend uses something like /requests/me
+};
+
+export type ResourceDispatchDestinationType = 'Shelter' | 'CitizenRequest';
+export type ResourceDispatchStatus = 'Dispatched' | 'InTransit' | 'Delivered';
+
+export interface CreateResourceDispatchRequest {
+  resourceId: string;
+  quantity: number;
+  destinationType: ResourceDispatchDestinationType;
+  destinationId: string;
+  volunteerId?: string;
+  campaignId?: string;
+}
+
+export interface ResourceDispatchResponse {
+  id?: string;
+  dispatchId?: string;
+  resourceId?: string;
+  resourceName?: string;
+  itemName?: string;
+  unit?: string;
+  quantity?: number;
+  destinationType?: ResourceDispatchDestinationType;
+  destinationId?: string;
+  destinationName?: string;
+  destination?: string;
+  shelterName?: string;
+  requestName?: string;
+  citizenName?: string;
+  volunteerId?: string | null;
+  volunteerUserId?: string | null;
+  volunteerName?: string | null;
+  campaignId?: string | null;
+  status?: ResourceDispatchStatus;
+  resource?: { itemName?: string; name?: string; unit?: string };
+  volunteer?: { id?: string; userId?: string; fullName?: string; name?: string };
+  createdAtUtc?: string;
+  dispatchedAtUtc?: string;
+  updatedAtUtc?: string;
+}
+
+export type ResourceDispatchListResponse =
+  | ResourceDispatchResponse[]
+  | { data?: ResourceDispatchResponse[]; items?: ResourceDispatchResponse[] }
+  | null;
+
+export const createResourceDispatch = async (
+  dispatch: CreateResourceDispatchRequest
+): Promise<ResourceDispatchResponse | null> => {
+  return await apiClient('/api/v1/resources/dispatches', {
+    method: 'POST',
+    body: JSON.stringify(dispatch),
+  }) as ResourceDispatchResponse | null;
+};
+
+export const getResourceDispatches = async (): Promise<ResourceDispatchListResponse> => {
+  return await apiClient('/api/v1/resources/dispatches', { method: 'GET' }) as ResourceDispatchListResponse;
+};
+
+export const updateResourceDispatchStatus = async (
+  dispatchId: string,
+  status: ResourceDispatchStatus
+): Promise<ResourceDispatchResponse | null> => {
+  return await apiClient(`/api/v1/resources/dispatches/${encodeURIComponent(dispatchId)}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  }) as ResourceDispatchResponse | null;
 };

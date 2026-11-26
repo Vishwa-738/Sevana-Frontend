@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   ShieldCheck,
   ArrowLeft,
@@ -109,6 +109,8 @@ function BrandMark({ dark = false }: { dark?: boolean }) {
 
 /* Unified Animated Login / Register Card */
 function AnimatedAuthCard({ initialMode }: { initialMode: 'login' | 'register' }) {
+  const [searchParams] = useSearchParams();
+  const nextUrl = searchParams.get('next');
   const navigate = useNavigate();
   const { login } = useAppContext();
 
@@ -186,7 +188,11 @@ function AnimatedAuthCard({ initialMode }: { initialMode: 'login' | 'register' }
 
       // Show the checkmark button animation before navigating
       setLoginSuccess(true);
-      setTimeout(() => {
+     setTimeout(() => {
+        if (nextUrl && nextUrl.startsWith('/')) {
+          navigate(nextUrl);
+          return;
+        }
         if (normalizedRole === 'Admin' || normalizedRole === 'Coordinator') {
           navigate('/dashboard');
         } else if (normalizedRole === 'ShelterAdmin') {

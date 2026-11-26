@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Menu, X, Phone, Globe, AlertTriangle, Users, Home, 
-  Heart, Zap, ChevronRight, CheckCircle,  Shield,
+  Menu, X, Phone, AlertTriangle, Users, Home,
+  Heart, Zap, CheckCircle, Shield,
   ArrowRight, Activity
 } from 'lucide-react';
 import { Button } from '../components/ui';
-
-// 1. Import the logo directly from your src folder!
-import customLogo from '../Logo/logo.png'; 
+import { useAppContext } from '../context';
+import customLogo from '../Logo/logo.png';
 
 function useCountUp(target: number, duration = 2000, started: boolean) {
   const [count, setCount] = useState(0);
@@ -38,9 +37,9 @@ function StatCard({ value, label, icon, color, delay }: { value: number; label: 
   }, []);
 
   return (
-    <div 
-      ref={ref} 
-      className={`flex flex-col items-center p-6 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 text-white text-center hover:-translate-y-2 transition-all duration-500 hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)]`}
+    <div
+      ref={ref}
+      className="flex flex-col items-center p-6 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 text-white text-center hover:-translate-y-2 transition-all duration-500 hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)]"
       style={{ animationDelay: `${delay}ms`, opacity: started ? 1 : 0, transform: started ? 'translateY(0)' : 'translateY(20px)', transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)' }}
     >
       <div className="w-14 h-14 rounded-2xl mb-4 flex items-center justify-center shadow-inner" style={{ backgroundColor: color + '20', border: `1px solid ${color}40` }}>
@@ -54,6 +53,7 @@ function StatCard({ value, label, icon, color, delay }: { value: number; label: 
 
 export function Landing() {
   const navigate = useNavigate();
+  const { user } = useAppContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -63,12 +63,24 @@ export function Landing() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const handleRequestAid = () => {
+    if (user) {
+      navigate('/citizen?openRequest=true');
+    } else {
+      navigate('/login?next=%2Fcitizen%3FopenRequest%3Dtrue');
+    }
+  };
+
+  const handleLocateShelter = () => {
+    navigate('/citizen?openShelters=true');
+  };
+
   const navLinks = [
     { label: 'Home', path: '#home' },
     { label: 'About', path: '#about' },
     { label: 'How It Works', path: '#how-it-works' },
     { label: 'Emergency Info', path: '#emergency-info' },
-    { label: 'Shelters', path: '/find-shelters', isRoute: true }
+    { label: 'Shelters', path: '/citizen?openShelters=true', isRoute: true }
   ];
 
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, link: typeof navLinks[0]) => {
@@ -87,16 +99,14 @@ export function Landing() {
   return (
     <div className="min-h-screen bg-[#F0F4F8] font-sans selection:bg-[#3B82F6] selection:text-white">
       {/* Redesigned Floating Navbar */}
-      <nav className={`fixed top-4 left-0 right-0 z-50 transition-all duration-300`}>
+      <nav className="fixed top-4 left-0 right-0 z-50 transition-all duration-300">
         <div className={`max-w-7xl mx-auto px-4 sm:px-6 transition-all duration-300 ${isScrolled ? 'py-3' : 'py-4'}`}>
-          
           <div className={`flex items-center justify-between transition-all duration-300 ${isScrolled ? 'bg-[#0A1628]/95 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-2 shadow-2xl' : ''}`}>
-            
             {/* Logo Section */}
             <div className={`flex items-center gap-3 cursor-pointer transition-all duration-300 ${isScrolled ? 'scale-90 origin-left' : ''}`} onClick={() => window.scrollTo(0, 0)}>
-              <img 
-                src={customLogo} 
-                alt="Sevana Logo" 
+              <img
+                src={customLogo}
+                alt="Sevana Logo"
                 className="h-20 lg:h-24 w-auto object-contain drop-shadow-2xl"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
@@ -104,16 +114,16 @@ export function Landing() {
                 }}
               />
               <div className="hidden w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg">
-                 <Shield size={20} className="text-white" />
+                <Shield size={20} className="text-white" />
               </div>
             </div>
 
             {/* Centered Navigation Links */}
             <div className="hidden lg:flex items-center gap-8 bg-white/5 px-8 py-3 rounded-full border border-white/10 backdrop-blur-md shadow-inner">
               {navLinks.map(link => (
-                <a 
-                  key={link.label} 
-                  href={link.path} 
+                <a
+                  key={link.label}
+                  href={link.path}
                   onClick={(e) => handleNavClick(e, link)}
                   className="text-white/80 hover:text-white text-sm font-semibold tracking-wide transition-colors"
                 >
@@ -143,9 +153,9 @@ export function Landing() {
         {menuOpen && (
           <div className="lg:hidden absolute top-full left-4 right-4 mt-2 bg-[#0D1B2E]/95 backdrop-blur-xl border border-white/10 rounded-2xl py-4 px-4 space-y-4 shadow-2xl">
             {navLinks.map(link => (
-              <a 
-                key={link.label} 
-                href={link.path} 
+              <a
+                key={link.label}
+                href={link.path}
                 onClick={(e) => handleNavClick(e, link)}
                 className="block text-white/80 hover:text-white py-2 text-base font-medium"
               >
@@ -188,7 +198,7 @@ export function Landing() {
               <p className="text-white/70 text-lg lg:text-xl mb-4 leading-relaxed max-w-2xl font-light">
                 Sevana unites affected citizens, emergency coordinators, and volunteers on a single intelligent platform. Delivering fast, transparent, and life-saving aid across Sri Lanka when seconds matter most.
               </p>
-              
+
               <p className="text-[#60A5FA] text-sm font-sinhala mb-10 tracking-widest">රැකවරණය • සහයෝගය • බලාපොරොත්තුව</p>
 
               <div className="flex flex-col sm:flex-row gap-4">
@@ -196,7 +206,7 @@ export function Landing() {
                   size="lg"
                   className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-none shadow-lg shadow-red-500/25 transition-all hover:scale-105 h-14 px-8 text-base"
                   icon={<AlertTriangle size={20} />}
-                  onClick={() => navigate('/citizen')}
+                  onClick={handleRequestAid}
                 >
                   Request Emergency Aid
                 </Button>
@@ -204,7 +214,7 @@ export function Landing() {
                   size="lg"
                   className="bg-white/10 backdrop-blur-md border border-white/20 text-white hover:bg-white/20 transition-all hover:scale-105 h-14 px-8 text-base"
                   icon={<Home size={20} />}
-                  onClick={() => navigate('/find-shelters')} 
+                  onClick={handleLocateShelter}
                 >
                   Locate Safe Shelter
                 </Button>
@@ -235,9 +245,7 @@ export function Landing() {
               <div className="relative transform rotate-y-[-10deg] rotate-x-[5deg] transition-transform duration-700 hover:rotate-y-0 hover:rotate-x-0">
                 <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/20 to-teal-400/20 rounded-3xl blur-2xl" />
                 <div className="bg-[#112240]/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-[0_20px_50px_rgb(0,0,0,0.5)] relative overflow-hidden">
-                  
                   <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
-                  
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
                       <div className="flex items-center gap-2">
@@ -309,7 +317,6 @@ export function Landing() {
       {/* Workflow Features */}
       <section id="how-it-works" className="py-24 bg-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/2 h-[500px] bg-gradient-to-bl from-blue-50 to-transparent rounded-bl-full pointer-events-none" />
-        
         <div className="max-w-7xl mx-auto px-4 sm:px-6 relative">
           <div className="text-center mb-16 max-w-3xl mx-auto">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-100 text-blue-600 mb-4">
@@ -336,7 +343,7 @@ export function Landing() {
                 title: 'Transparent Tracking',
                 desc: 'End-to-end visibility from dispatch to delivery. Citizens get SMS updates, and authorities maintain complete audit trails.'
               },
-            ].map((f, i) => (
+            ].map((f) => (
               <div key={f.title} className="group bg-white p-8 rounded-3xl border border-[#E2E8F0] shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 relative overflow-hidden">
                 <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-${f.color}/10 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110`} />
                 <div className={`w-16 h-16 rounded-2xl ${f.bg} mb-6 flex items-center justify-center transform group-hover:-translate-y-1 transition-transform`} style={{ color: f.color }}>
@@ -357,9 +364,7 @@ export function Landing() {
       <section id="emergency-info" className="py-20 bg-[#F8FAFC]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="bg-gradient-to-br from-[#0D1B2E] to-[#1A3A6B] rounded-[2.5rem] p-8 lg:p-14 shadow-2xl relative overflow-hidden">
-            
             <div className="absolute right-0 bottom-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-            
             <div className="grid lg:grid-cols-2 gap-12 items-center relative z-10">
               <div>
                 <div className="inline-flex items-center gap-2 bg-red-500/20 border border-red-500/30 rounded-full px-4 py-2 mb-6">
@@ -368,7 +373,7 @@ export function Landing() {
                 </div>
                 <h2 className="text-4xl font-bold text-white font-[Outfit] mb-4 tracking-tight">Need Immediate Help?</h2>
                 <p className="text-blue-100/80 text-lg mb-8 leading-relaxed">If you are in immediate, life-threatening danger, contact national emergency services first. Use Sevana to coordinate ongoing relief and shelter.</p>
-                
+
                 <div className="grid sm:grid-cols-2 gap-4">
                   {[
                     { label: 'National Emergency', number: '119', icon: <Phone size={20} />, color: 'text-red-400' },
@@ -419,15 +424,14 @@ export function Landing() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
             <div className="lg:col-span-1">
               <div className="flex items-center gap-3 mb-6">
-                {/* 3. Bind the custom logo in the footer as well */}
-                <img 
-                  src={customLogo} 
-                  alt="Sevana Logo" 
+                <img
+                  src={customLogo}
+                  alt="Sevana Logo"
                   className="h-12 w-auto object-contain drop-shadow-md"
                   onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }}
                 />
                 <div className="hidden w-8 h-8 rounded bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-                   <Shield size={16} className="text-white" />
+                  <Shield size={16} className="text-white" />
                 </div>
               </div>
               <p className="text-white/50 text-sm leading-relaxed mb-4">
@@ -450,7 +454,7 @@ export function Landing() {
               </div>
             ))}
           </div>
-          
+
           <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-white/40 text-sm">© 2026 Sevana. All rights reserved.</p>
             <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-full border border-white/10">
@@ -465,18 +469,18 @@ export function Landing() {
 }
 
 // Icon Components
-function Brain({ size, className }: { size: number, className?: string }) {
+function Brain({ size, className }: { size: number; className?: string }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
-      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
-      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>
-      <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/>
-      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/>
-      <path d="M3.477 10.896a4 4 0 0 1 .585-.396"/>
-      <path d="M19.938 10.5a4 4 0 0 1 .585.396"/>
-      <path d="M6 18a4 4 0 0 1-1.967-.516"/>
-      <path d="M19.967 17.484A4 4 0 0 1 18 18"/>
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
+      <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
+      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
+      <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
+      <path d="M19.938 10.5a4 4 0 0 1 .585.396" />
+      <path d="M6 18a4 4 0 0 1-1.967-.516" />
+      <path d="M19.967 17.484A4 4 0 0 1 18 18" />
     </svg>
   );
 }
