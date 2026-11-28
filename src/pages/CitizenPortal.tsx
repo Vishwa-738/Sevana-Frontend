@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Home, MapPin, Bell, Plus, ChevronRight, CheckCircle,
   Clock, Package, Truck, Star, Upload, ShieldCheck, Phone, HeartHandshake,
-  Activity, Navigation, Loader2, ExternalLink, Globe
+  Activity, Navigation, Loader2, ExternalLink, Globe, X
 } from 'lucide-react';
 import { Button, Card, Badge, StatusBadge, Modal, Input, Textarea, Select, Alert, Progress } from '../components/ui';
+import { LocationAutocomplete, type LocationSuggestion } from '../components/LocationAutocomplete';
 import { useAppContext } from '../context';
-import { ApiError, apiClient, getAssignedVolunteerForRequest, getNotifications } from '../api';
+import { ApiError, apiClient, createAssistanceRequest, getAssignedVolunteerForRequest, getNotifications } from '../api';
 import { isArchivedStatus } from '../utils/requestLifecycle';
 
 type CitizenLang = 'en' | 'si' | 'ta';
@@ -15,6 +16,82 @@ type RequestView = 'active' | 'history';
 
 const LANG_STORAGE_KEY = 'sevana_citizen_lang';
 const VERIFIED_REQUESTS_STORAGE_KEY = 'sevana_verified_citizen_requests';
+const REQUEST_EVIDENCE_STORAGE_KEY = 'sevana_citizen_request_evidence';
+const MAX_EVIDENCE_FILES = 3;
+const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024;
+const ACCEPTED_EVIDENCE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+]);
+
+interface StoredEvidenceMetadata {
+  fileName: string;
+  mimeType: string;
+  size: number;
+  compressedPreview?: string;
+}
+
+async function createCompressedEvidencePreview(file: File): Promise<string | undefined> {
+  if (!file.type.startsWith('image/')) return undefined;
+  const image = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 320 / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) return undefined;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>(resolve =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.6)
+    );
+    if (!blob) return undefined;
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('Could not read compressed evidence preview.'));
+      reader.onerror = () => reject(reader.error || new Error('Could not read compressed evidence preview.'));
+      reader.readAsDataURL(blob);
+    });
+  } finally {
+    image.close();
+  }
+}
+
+async function saveRequestEvidenceMetadata(requestId: string, files: File[]): Promise<boolean> {
+  try {
+    const evidence = await Promise.all(files.map(async file => {
+      const metadata: StoredEvidenceMetadata = {
+        fileName: file.name,
+        mimeType: file.type,
+        size: file.size,
+      };
+      try {
+        metadata.compressedPreview = await createCompressedEvidencePreview(file);
+      } catch (error: unknown) {
+        console.warn(`Could not create a local preview for ${file.name}.`, error);
+      }
+      return metadata;
+    }));
+    const stored = localStorage.getItem(REQUEST_EVIDENCE_STORAGE_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : {};
+    const existing: Record<string, StoredEvidenceMetadata[]> =
+      typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? parsed as Record<string, StoredEvidenceMetadata[]>
+        : {};
+    localStorage.setItem(
+      REQUEST_EVIDENCE_STORAGE_KEY,
+      JSON.stringify({ ...existing, [requestId]: evidence })
+    );
+    return true;
+  } catch (error: unknown) {
+    console.error('Could not save local request evidence previews.', error);
+    return false;
+  }
+}
 
 function getVerifiedRequestIds(): Set<string> {
   try {
@@ -160,7 +237,13 @@ const translations = {
     affectedPeople: 'Number of affected people',
     supportingEvidence: 'Supporting evidence (optional)',
     uploadPrompt: 'Upload photos or documents',
-    uploadHint: 'JPG, PNG, PDF up to 10MB',
+    uploadHint: 'JPG, PNG, WebP or PDF up to 10MB · up to 3 files',
+    evidenceRemove: (name: string) => `Remove ${name}`,
+    evidenceTypeError: 'Only JPG, PNG, WebP images and PDF files are allowed.',
+    evidenceSizeError: 'Each supporting file must be 10MB or smaller.',
+    evidenceCountError: 'You can attach up to 3 files.',
+    evidenceLocalOnly: 'Evidence previews are saved on this device only; they are not uploaded with this request yet.',
+    evidenceMetadataSaveFailed: 'The request was submitted, but evidence preview metadata could not be saved on this device.',
     aiAnalyzingTitle: 'AI is analyzing your request...',
     aiAnalyzingSub: 'Classifying urgency and matching available resources',
     aiAnalysisResult: 'AI Analysis Result',
@@ -327,7 +410,13 @@ const translations = {
     affectedPeople: 'බලපෑමට ලක් වූ පුද්ගලයින් ගණන',
     supportingEvidence: 'අමතර සාක්ෂි (අත්‍යවශ්‍ය නොවේ)',
     uploadPrompt: 'ඡායාරූප හෝ ලේඛන උඩුගත කරන්න',
-    uploadHint: 'JPG, PNG, PDF (10MB දක්වා)',
+    uploadHint: 'JPG, PNG, WebP හෝ PDF 10MB දක්වා · ගොනු 3ක් දක්වා',
+    evidenceRemove: (name: string) => `${name} ඉවත් කරන්න`,
+    evidenceTypeError: 'JPG, PNG, WebP රූප සහ PDF ගොනු පමණක් අවසර ඇත.',
+    evidenceSizeError: 'සෑම සාක්ෂි ගොනුවක්ම 10MB හෝ ඊට අඩු විය යුතුය.',
+    evidenceCountError: 'ඔබට ගොනු 3ක් දක්වා එක් කළ හැක.',
+    evidenceLocalOnly: 'සාක්ෂි පෙරදසුන් මෙම උපාංගයේ පමණක් සුරැකේ; ඒවා තවමත් ඉල්ලීම සමඟ උඩුගත නොවේ.',
+    evidenceMetadataSaveFailed: 'ඉල්ලීම යවා ඇත, නමුත් සාක්ෂි පෙරදසුන් මෙම උපාංගයේ සුරැකීමට නොහැකි විය.',
     aiAnalyzingTitle: 'AI ඔබේ ඉල්ලීම විශ්ලේෂණය කරමින් පවතී...',
     aiAnalyzingSub: 'හදිසි මට්ටම වර්ගීකරණය කරමින් සහ සම්පත් ගලපමින් සිටී',
     aiAnalysisResult: 'AI විශ්ලේෂණ ප්‍රතිඵලය',
@@ -494,7 +583,13 @@ const translations = {
     affectedPeople: 'பாதிக்கப்பட்டவர்களின் எண்ணிக்கை',
     supportingEvidence: 'ஆதாரங்கள் (விருப்பமானது)',
     uploadPrompt: 'புகைப்படங்கள் அல்லது ஆவணங்களைப் பதிவேற்றவும்',
-    uploadHint: 'JPG, PNG, PDF (10MB வரை)',
+    uploadHint: 'JPG, PNG, WebP அல்லது PDF 10MB வரை · அதிகபட்சம் 3 கோப்புகள்',
+    evidenceRemove: (name: string) => `${name} நீக்கவும்`,
+    evidenceTypeError: 'JPG, PNG, WebP படங்கள் மற்றும் PDF கோப்புகள் மட்டுமே அனுமதிக்கப்படும்.',
+    evidenceSizeError: 'ஒவ்வொரு ஆதாரக் கோப்பும் 10MB அல்லது அதற்குக் குறைவாக இருக்க வேண்டும்.',
+    evidenceCountError: 'அதிகபட்சம் 3 கோப்புகள் வரை இணைக்கலாம்.',
+    evidenceLocalOnly: 'ஆதார முன்னோட்டங்கள் இந்தச் சாதனத்தில் மட்டுமே சேமிக்கப்படும்; அவை இன்னும் கோரிக்கையுடன் பதிவேற்றப்படவில்லை.',
+    evidenceMetadataSaveFailed: 'கோரிக்கை சமர்ப்பிக்கப்பட்டது, ஆனால் ஆதார முன்னோட்டத் தகவலைச் சாதனத்தில் சேமிக்க முடியவில்லை.',
     aiAnalyzingTitle: 'AI உங்கள் கோரிக்கையை பகுப்பாய்வு செய்கிறது...',
     aiAnalyzingSub: 'அவசர நிலையை வகைப்படுத்தி வளங்களைப் பொருத்துகிறது',
     aiAnalysisResult: 'AI பகுப்பாய்வு முடிவு',
@@ -692,11 +787,58 @@ export function CitizenPortal() {
     longitude: null as number | null,
     affected: '1',
   });
-  const [locationSearch, setLocationSearch] = useState('');
-  const [locationResults, setLocationResults] = useState<any[]>([]);
-  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
-  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidencePreviews, setEvidencePreviews] = useState<Map<File, string>>(new Map());
+  const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
+  const evidenceInputRef = useRef<HTMLInputElement>(null);
   const [isLocatingGps, setIsLocatingGps] = useState(false);
+
+  useEffect(() => {
+    const previews = new Map<File, string>();
+    evidenceFiles.forEach(file => {
+      if (file.type.startsWith('image/')) previews.set(file, URL.createObjectURL(file));
+    });
+    setEvidencePreviews(previews);
+    return () => previews.forEach(url => URL.revokeObjectURL(url));
+  }, [evidenceFiles]);
+
+  const addEvidenceFiles = (selectedFiles: FileList | File[]) => {
+    const incomingFiles = Array.from(selectedFiles);
+    const accepted: File[] = [];
+    let countExceeded = false;
+
+    incomingFiles.forEach(file => {
+      if (evidenceFiles.length + accepted.length >= MAX_EVIDENCE_FILES) {
+        countExceeded = true;
+        return;
+      }
+      if (!ACCEPTED_EVIDENCE_TYPES.has(file.type)) {
+        addToast({ type: 'error', message: `${file.name}: ${t.evidenceTypeError}` });
+        return;
+      }
+      if (file.size > MAX_EVIDENCE_FILE_SIZE) {
+        addToast({ type: 'error', message: `${file.name}: ${t.evidenceSizeError}` });
+        return;
+      }
+      const alreadySelected = evidenceFiles.some(existing =>
+        existing.name === file.name &&
+        existing.size === file.size &&
+        existing.lastModified === file.lastModified
+      ) || accepted.some(existing =>
+        existing.name === file.name &&
+        existing.size === file.size &&
+        existing.lastModified === file.lastModified
+      );
+      if (!alreadySelected) accepted.push(file);
+    });
+
+    if (accepted.length > 0) setEvidenceFiles(previous => [...previous, ...accepted]);
+    if (countExceeded) addToast({ type: 'error', message: t.evidenceCountError });
+  };
+
+  const removeEvidenceFile = (fileToRemove: File) => {
+    setEvidenceFiles(files => files.filter(file => file !== fileToRemove));
+  };
 
   const openFeedbackModal = (requestId: string) => {
     const request = myRequests.find(item => String(item.id) === requestId);
@@ -816,54 +958,19 @@ export function CitizenPortal() {
       longitude: longitude !== null && Number.isFinite(longitude) ? longitude : null,
       affected: Number.isFinite(affectedCount) && affectedCount > 0 ? String(affectedCount) : '1',
     });
-    setLocationSearch(location);
-    setLocationResults([]);
-    setShowLocationDropdown(false);
     setRequestStep('form');
     setAiResult(null);
     setAiUnavailable(false);
     setShowRequestModal(true);
   };
 
-  // Debounced search for OpenStreetMap (Sri Lanka, localized to selected language)
-  useEffect(() => {
-    if (locationSearch.length < 3 || locationSearch === form.location) {
-      setLocationResults([]);
-      return;
-    }
-
-    const delayDebounceFn = setTimeout(async () => {
-      setIsSearchingLocation(true);
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&addressdetails=1&countrycodes=lk&limit=5&accept-language=${lang}`
-        );
-        const data = await res.json();
-        setLocationResults(data || []);
-        setShowLocationDropdown(true);
-      } catch (err) {
-        console.error('Location search failed', err);
-      } finally {
-        setIsSearchingLocation(false);
-      }
-    }, 500);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [locationSearch, form.location, lang]);
-
-  const handleSelectLocation = (place: any) => {
-    const lat = parseFloat(place.lat);
-    const lon = parseFloat(place.lon);
-    const address = place.display_name;
-
+  const handleSelectLocation = (suggestion: LocationSuggestion) => {
     setForm(f => ({
       ...f,
-      location: address,
-      latitude: isNaN(lat) ? null : lat,
-      longitude: isNaN(lon) ? null : lon,
+      location: suggestion.displayName,
+      latitude: suggestion.latitude,
+      longitude: suggestion.longitude,
     }));
-    setLocationSearch(address);
-    setShowLocationDropdown(false);
   };
 
   const handleUseCurrentLocation = () => {
@@ -896,8 +1003,6 @@ export function CitizenPortal() {
           latitude,
           longitude,
         }));
-        setLocationSearch(resolvedAddress);
-        setShowLocationDropdown(false);
         setIsLocatingGps(false);
         addToast({ type: 'success', message: t.toastGpsCaptured });
       },
@@ -1123,11 +1228,15 @@ export function CitizenPortal() {
   };
 
   const confirmRequest = async () => {
+    if (form.latitude === null || form.longitude === null) {
+      addToast({ type: 'error', message: t.toastPinLocation });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const response = await apiClient('/api/v1/requests', {
-        method: 'POST',
-        body: JSON.stringify({
+      const submittedEvidenceFiles = [...evidenceFiles];
+      const response = await createAssistanceRequest({
           category: form.category,
           urgency: form.urgency,
           description: form.description,
@@ -1136,11 +1245,20 @@ export function CitizenPortal() {
           longitude: form.longitude,
           affected: parseInt(form.affected, 10) || 1,
           language: lang,
-        }),
-      });
+        }, submittedEvidenceFiles);
 
-      const newTrackingId = response?.id || response?.Id || response?.data?.id || `REQ-${Math.floor(Math.random() * 10000)}`;
+      const newTrackingId = String(
+        response?.id || response?.Id || response?.data?.id || `REQ-${Math.floor(Math.random() * 10000)}`
+      );
       setTrackingId(newTrackingId);
+
+      if (submittedEvidenceFiles.length > 0) {
+        const metadataSaved = await saveRequestEvidenceMetadata(newTrackingId, submittedEvidenceFiles);
+        addToast({ type: 'info', message: t.evidenceLocalOnly });
+        if (!metadataSaved) {
+          addToast({ type: 'error', message: t.evidenceMetadataSaveFailed });
+        }
+      }
 
       setRequestStep('success');
 
@@ -1150,7 +1268,7 @@ export function CitizenPortal() {
         setAiResult(null);
         setAiUnavailable(false);
         setForm({ category: '', urgency: '', description: '', location: '', latitude: null, longitude: null, affected: '1' });
-        setLocationSearch('');
+        setEvidenceFiles([]);
         loadDashboardData();
       }, 3500);
     } catch (error: any) {
@@ -1718,7 +1836,6 @@ export function CitizenPortal() {
           setRequestStep('form');
           setAiResult(null);
           setAiUnavailable(false);
-          setShowLocationDropdown(false);
         }}
         title={t.requestAssistance}
         size="lg"
@@ -1781,7 +1898,7 @@ export function CitizenPortal() {
               />
 
               {/* Accurate Location Capture (GPS + OpenStreetMap Autocomplete) */}
-              <div className="flex flex-col gap-1.5 relative">
+              <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-sm font-medium text-[#0D1B2E]">{t.yourCurrentLocation}</label>
                   <button
@@ -1794,41 +1911,18 @@ export function CitizenPortal() {
                     {isLocatingGps ? t.locating : t.useMyGps}
                   </button>
                 </div>
-
-                <div className="relative">
-                  <MapPin size={16} className="absolute left-3 top-2.5 text-[#5A7290]" />
-                  <input
-                    type="text"
-                    placeholder={t.searchLocationPlaceholder}
-                    className="w-full pl-9 pr-9 py-2 border border-[#CBD8E6] rounded-xl text-sm text-[#0D1B2E] focus:outline-none focus:border-[#1A3A6B] bg-white"
-                    value={locationSearch}
-                    onChange={(e) => {
-                      setLocationSearch(e.target.value);
-                      setForm(f => ({ ...f, location: e.target.value, latitude: null, longitude: null }));
-                    }}
-                    onFocus={() => {
-                      if (locationResults.length > 0) setShowLocationDropdown(true);
-                    }}
-                  />
-                  {isSearchingLocation && (
-                    <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-[#5A7290]" />
-                  )}
-                </div>
-
-                {showLocationDropdown && locationResults.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#CBD8E6] rounded-xl shadow-lg max-h-52 overflow-y-auto">
-                    {locationResults.map((result, idx) => (
-                      <div
-                        key={idx}
-                        className="px-3 py-2.5 text-xs text-[#0D1B2E] hover:bg-[#F0F4F8] cursor-pointer border-b border-[#F0F4F8] last:border-0 flex items-start gap-2"
-                        onClick={() => handleSelectLocation(result)}
-                      >
-                        <MapPin size={14} className="text-[#1A3A6B] shrink-0 mt-0.5" />
-                        <span>{result.display_name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <LocationAutocomplete
+                  value={form.location}
+                  placeholder={t.searchLocationPlaceholder}
+                  language={lang}
+                  onChange={value => setForm(f => ({
+                    ...f,
+                    location: value,
+                    latitude: null,
+                    longitude: null,
+                  }))}
+                  onSelect={handleSelectLocation}
+                />
 
                 {form.latitude !== null && form.longitude !== null ? (
                   <p className="text-xs text-[#16A34A] flex items-center gap-1 font-medium mt-0.5">
@@ -1853,11 +1947,76 @@ export function CitizenPortal() {
               />
               <div>
                 <label className="text-sm font-medium text-[#0D1B2E] block mb-1.5">{t.supportingEvidence}</label>
-                <div className="border-2 border-dashed border-[#CBD8E6] rounded-xl p-6 text-center cursor-pointer hover:border-[#1A3A6B]/40 transition-colors">
+                <input
+                  ref={evidenceInputRef}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={event => {
+                    if (event.currentTarget.files) addEvidenceFiles(event.currentTarget.files);
+                    event.currentTarget.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  className={`w-full border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                    isDraggingEvidence
+                      ? 'border-[#1A3A6B] bg-[#EFF6FF]'
+                      : 'border-[#CBD8E6] hover:border-[#1A3A6B]/40'
+                  }`}
+                  onClick={() => evidenceInputRef.current?.click()}
+                  onDragOver={event => {
+                    event.preventDefault();
+                    setIsDraggingEvidence(true);
+                  }}
+                  onDragLeave={() => setIsDraggingEvidence(false)}
+                  onDrop={event => {
+                    event.preventDefault();
+                    setIsDraggingEvidence(false);
+                    if (event.dataTransfer.files) addEvidenceFiles(event.dataTransfer.files);
+                  }}
+                >
                   <Upload size={24} className="text-[#5A7290] mx-auto mb-2" />
                   <p className="text-sm text-[#5A7290]">{t.uploadPrompt}</p>
                   <p className="text-xs text-[#5A7290] mt-1">{t.uploadHint}</p>
-                </div>
+                </button>
+                {evidenceFiles.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+                    {evidenceFiles.map(file => {
+                      const preview = evidencePreviews.get(file);
+                      return (
+                        <div
+                          key={`${file.name}-${file.size}-${file.lastModified}`}
+                          className="relative min-w-0 overflow-hidden rounded-lg border border-[#CBD8E6] bg-white"
+                        >
+                          {preview ? (
+                            <img
+                              src={preview}
+                              alt={file.name}
+                              className="h-24 w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-24 flex items-center justify-center bg-[#F8FAFC] px-2">
+                              <span className="rounded bg-[#E2E8F0] px-2 py-1 text-xs font-semibold text-slate-700">PDF</span>
+                            </div>
+                          )}
+                          <p className="truncate px-2 py-1.5 text-xs text-[#334155]" title={file.name}>
+                            {file.name}
+                          </p>
+                          <button
+                            type="button"
+                            aria-label={t.evidenceRemove(file.name)}
+                            onClick={() => removeEvidenceFile(file)}
+                            className="absolute right-1 top-1 rounded-full bg-white/90 p-1 text-slate-700 shadow hover:bg-white"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

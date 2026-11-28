@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Layout, PageHeader } from '../components/Layout';
 import { Card, KpiCard, Badge, Button, Modal, Input, Select, Progress, Tabs, SearchInput } from '../components/ui';
+import { LocationAutocomplete, type LocationSuggestion } from '../components/LocationAutocomplete';
 import { useAppContext } from '../context';
 import { apiClient } from '../api';
 
@@ -151,11 +152,6 @@ export function ShelterManagement() {
     facilities: ''
   });
 
-  // OpenStreetMap (Nominatim) Autocomplete & GPS State
-  const [locationSearch, setLocationSearch] = useState('');
-  const [locationResults, setLocationResults] = useState<any[]>([]);
-  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
-  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [isLocatingGps, setIsLocatingGps] = useState(false);
 
   const isShelterManager = (user?.role || '').toLowerCase() === 'shelteradmin';
@@ -178,52 +174,17 @@ export function ShelterManagement() {
     [isShelterManager, currentUserId, currentUserName]
   );
 
-  useEffect(() => {
-    if (locationSearch.length < 3 || locationSearch === addForm.location) {
-      setLocationResults([]);
-      return;
-    }
-
-    const delayDebounceFn = setTimeout(async () => {
-      setIsSearchingLocation(true);
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&addressdetails=1&countrycodes=lk&limit=5`
-        );
-        const data = await res.json();
-        setLocationResults(data || []);
-        setShowLocationDropdown(true);
-      } catch (err) {
-        console.error('Location search failed', err);
-      } finally {
-        setIsSearchingLocation(false);
-      }
-    }, 500);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [locationSearch, addForm.location]);
-
-  const handleSelectLocation = (place: any) => {
-    const lat = place.lat;
-    const lon = place.lon;
-    const address = place.display_name;
-
-    const ad = place.address || {};
-    let district = ad.state_district || ad.county || ad.city || '';
-    if (district) {
-      district = district.replace(' District', '').trim();
-    }
-
+  const handleSelectLocation = (suggestion: LocationSuggestion) => {
+    const district = SRI_LANKA_DISTRICTS.find(
+      item => item.toLowerCase() === suggestion.district.toLowerCase()
+    );
     setAddForm(f => ({
       ...f,
-      location: address,
-      latitude: String(lat || ''),
-      longitude: String(lon || ''),
-      district: SRI_LANKA_DISTRICTS.includes(district) ? district : f.district
+      location: suggestion.displayName,
+      latitude: String(suggestion.latitude),
+      longitude: String(suggestion.longitude),
+      district: district || f.district
     }));
-
-    setLocationSearch(address);
-    setShowLocationDropdown(false);
   };
 
   const handleUseCurrentLocation = () => {
@@ -246,8 +207,11 @@ export function ShelterManagement() {
           const data = await res.json();
           if (data?.display_name) resolvedAddress = data.display_name;
           const ad = data?.address || {};
-          const rawDist = (ad.state_district || ad.county || ad.city || '').replace(' District', '').trim();
-          if (SRI_LANKA_DISTRICTS.includes(rawDist)) detectedDistrict = rawDist;
+          const rawDist = (ad.state_district || ad.county || ad.city || '')
+            .replace(/\s+District$/i, '')
+            .trim()
+            .toLowerCase();
+          detectedDistrict = SRI_LANKA_DISTRICTS.find(district => district.toLowerCase() === rawDist) || '';
         } catch {
           // Fall back to coordinates
         }
@@ -259,8 +223,6 @@ export function ShelterManagement() {
           longitude: longitude.toFixed(6),
           district: detectedDistrict || f.district
         }));
-        setLocationSearch(resolvedAddress);
-        setShowLocationDropdown(false);
         setIsLocatingGps(false);
         addToast({ type: 'success', message: 'Shelter GPS coordinates captured.' });
       },
@@ -475,7 +437,6 @@ export function ShelterManagement() {
         name: '', location: '', district: '', latitude: '', longitude: '',
         capacity: '', contact: '', org: '', managerVolunteerId: '', accessible: false, facilities: ''
       });
-      setLocationSearch('');
       loadShelters();
     } catch (error: any) {
       addToast({ type: 'error', message: error.message || 'Failed to add shelter.' });
@@ -1093,7 +1054,6 @@ export function ShelterManagement() {
         open={addModal}
         onClose={() => {
           setAddModal(false);
-          setLocationSearch('');
         }}
         title="Add New Shelter"
         size="md"
@@ -1103,7 +1063,6 @@ export function ShelterManagement() {
               variant="outline"
               onClick={() => {
                 setAddModal(false);
-                setLocationSearch('');
               }}
               disabled={isSubmitting}
             >
@@ -1143,7 +1102,7 @@ export function ShelterManagement() {
           />
 
           {/* OpenStreetMap Address Search + GPS */}
-          <div className="flex flex-col gap-1.5 relative">
+          <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-[#5A7290]">Address Search (OpenStreetMap)</label>
               <button
@@ -1156,38 +1115,17 @@ export function ShelterManagement() {
                 {isLocatingGps ? 'Locating...' : 'Use My GPS'}
               </button>
             </div>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Start typing an address or landmark..."
-                className="w-full px-3 py-2 border border-[#CBD8E6] rounded-lg text-sm focus:outline-none focus:border-[#1D4ED8]"
-                value={locationSearch}
-                onChange={(e) => {
-                  setLocationSearch(e.target.value);
-                  setAddForm(f => ({ ...f, location: e.target.value }));
-                }}
-                onFocus={() => {
-                  if (locationResults.length > 0) setShowLocationDropdown(true);
-                }}
-              />
-              {isSearchingLocation && (
-                <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-[#5A7290]" />
-              )}
-            </div>
-
-            {showLocationDropdown && locationResults.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#CBD8E6] rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                {locationResults.map((result, idx) => (
-                  <div
-                    key={idx}
-                    className="px-3 py-2 text-sm hover:bg-[#F0F4F8] cursor-pointer border-b border-[#F0F4F8] last:border-0"
-                    onClick={() => handleSelectLocation(result)}
-                  >
-                    {result.display_name}
-                  </div>
-                ))}
-              </div>
-            )}
+            <LocationAutocomplete
+              value={addForm.location}
+              placeholder="Start typing an address or landmark..."
+              onChange={value => setAddForm(form => ({
+                ...form,
+                location: value,
+                latitude: '',
+                longitude: '',
+              }))}
+              onSelect={handleSelectLocation}
+            />
           </div>
 
           <Select

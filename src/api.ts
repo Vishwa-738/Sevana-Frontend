@@ -109,6 +109,29 @@ export const getMyRequests = async () => {
   return apiClient('/api/v1/citizen/requests'); // Adjust endpoint path if your backend uses something like /requests/me
 };
 
+export interface CreateAssistanceRequestPayload {
+  category: string;
+  urgency: string;
+  description: string;
+  location: string;
+  latitude: number;
+  longitude: number;
+  affected: number;
+  language: string;
+}
+
+export const createAssistanceRequest = async (
+  request: CreateAssistanceRequestPayload,
+  evidenceFiles: File[] = []
+) => {
+  // TODO: wire to backend multipart/upload endpoint
+  void evidenceFiles;
+  return apiClient('/api/v1/requests', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+};
+
 export type ResourceDispatchDestinationType = 'Shelter' | 'CitizenRequest';
 export type ResourceDispatchStatus = 'Dispatched' | 'InTransit' | 'Delivered';
 
